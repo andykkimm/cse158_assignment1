@@ -1,0 +1,105 @@
+CSE 158 Assignment 1 - Book Review Recommender Systems
+Writeup Documentation
+
+================================================================================
+TASK 1: RATING PREDICTION
+================================================================================
+
+Approach:
+I implemented a bias-based collaborative filtering model that improves upon the
+baseline's simple user-average approach. The model computes:
+- Global average rating (alpha) across all interactions
+- User-specific bias: deviation of each user's average from the global average
+- Item-specific bias: deviation of each item's average from the global average
+- Final prediction: alpha + user_bias + item_bias
+
+Implementation Details:
+- For users/items seen in training: Use learned biases
+- For cold-start cases (new users/items): Default bias of 0 (reverts to global avg)
+- Predictions are clipped to valid rating range [1, 5]
+- This model captures both user tendencies (some users rate higher/lower) and
+  item quality (some books are universally better rated)
+
+Expected Improvement:
+This bias model should significantly outperform the baseline which only uses
+user averages and ignores item-specific information. The model accounts for both
+user preferences and book quality, providing more nuanced predictions.
+
+================================================================================
+TASK 2: READ PREDICTION
+================================================================================
+
+Approach:
+I implemented a feature-based approach combining multiple signals to predict
+whether a user will read a book. The model considers three main features:
+
+1. Book Popularity (weight: 0.5)
+   - Uses the same popular book identification as baseline (top 50% of reads)
+   - Books that many users read are more likely to be read
+
+2. Collaborative Filtering via Jaccard Similarity (weight: 0.5)
+   - For each test pair (user, book), find other users who read that book
+   - Compute Jaccard similarity between the target user's reading history and
+     other users' reading histories
+   - High similarity suggests the user has similar tastes and may read the book
+   - Formula: Jaccard(A,B) = |A ∩ B| / |A ∪ B|
+
+3. User Activity Level (weight: up to 0.2)
+   - More active users (who read more books) are generally more likely to read
+     additional books
+   - Normalized to prevent overfitting
+
+Final prediction combines these features with a threshold of 0.5 for binary
+classification.
+
+Expected Improvement:
+The collaborative filtering component should provide significant improvement over
+the baseline by identifying users with similar reading patterns, rather than
+relying solely on overall popularity.
+
+================================================================================
+TASK 3: CATEGORY PREDICTION
+================================================================================
+
+Approach:
+I implemented a machine learning text classification pipeline that substantially
+improves upon the keyword-matching baseline:
+
+1. Text Preprocessing:
+   - Convert all review text to lowercase
+   - Remove punctuation
+   - Clean text for consistent feature extraction
+
+2. Feature Engineering:
+   - TF-IDF (Term Frequency-Inverse Document Frequency) vectorization
+   - Parameters: max 5000 features, min_df=5, max_df=0.8
+   - Captures both unigrams and bigrams (1-2 word phrases)
+   - TF-IDF weights important category-specific words while downweighting
+     common words
+
+3. Classification Model:
+   - Logistic Regression with multinomial classification
+   - C=1.0 (regularization parameter)
+   - Handles all 5 categories: Children, Comics/Graphic, Fantasy,
+     Mystery/Thriller, Young Adult
+   - Training accuracy: 75%
+
+Expected Improvement:
+The TF-IDF + Logistic Regression approach learns discriminative patterns from
+the training data rather than relying on manually-selected keywords. This should
+provide substantial improvement over the baseline, especially for reviews that
+don't explicitly mention genre keywords.
+
+================================================================================
+IMPLEMENTATION NOTES
+================================================================================
+
+- All code is contained in assignment1.py with clear section markers for each task
+- The code processes data efficiently using defaultdict for sparse data structures
+- Prediction files follow the exact format specified in the assignment
+- Dependencies: numpy, scikit-learn (standard ML libraries)
+- Runtime: ~30-60 seconds on the full dataset
+
+The solutions balance model complexity with computational efficiency, using
+well-established recommender system and ML techniques that should substantially
+outperform the baselines while remaining computationally tractable.
