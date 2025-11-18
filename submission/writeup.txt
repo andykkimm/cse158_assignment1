@@ -1,5 +1,4 @@
 CSE 158 Assignment 1 - Writeup
-Author: Assignment Solution
 Date: November 2025
 
 ================================================================================
