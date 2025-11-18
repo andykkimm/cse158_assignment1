@@ -35,6 +35,7 @@ def readCSV(path):
 
 ###############################################################################
 # TASK 1: READ PREDICTION
+# Using Jaccard similarity approach from hw3.py
 ###############################################################################
 print("=" * 80)
 print("TASK 1: READ PREDICTION")
@@ -42,155 +43,56 @@ print("=" * 80)
 
 # Load training data
 print("Loading training data...")
-userBooks = defaultdict(set)
-bookUsers = defaultdict(set)
-allBooks = set()
-allUsers = set()
-bookCount = defaultdict(int)
-userCount = defaultdict(int)
+ratingsPerUser = defaultdict(set)
+ratingsPerItem = defaultdict(set)
 
 for user, book, rating in readCSV("train_Interactions.csv.gz"):
-    userBooks[user].add(book)
-    bookUsers[book].add(user)
-    allBooks.add(book)
-    allUsers.add(user)
-    bookCount[book] += 1
-    userCount[user] += 1
+    ratingsPerUser[user].add(book)
+    ratingsPerItem[book].add(user)
 
-print(f"Loaded {len(allUsers)} users and {len(allBooks)} books")
+print(f"Loaded {len(ratingsPerUser)} users and {len(ratingsPerItem)} books")
 
-# Calculate book popularity
-totalInteractions = sum(bookCount.values())
-bookPopularity = {book: count / totalInteractions for book, count in bookCount.items()}
-
-# Find most popular books (for baseline comparison)
-mostPopular = sorted(bookCount.items(), key=lambda x: x[1], reverse=True)
-popularBooks = set()
-count = 0
-for book, c in mostPopular:
-    count += c
-    popularBooks.add(book)
-    if count > totalInteractions / 2:
-        break
-
-# Jaccard similarity function
-def jaccard_similarity(set1, set2):
+def Jaccard(s1, s2):
     """Calculate Jaccard similarity between two sets"""
-    if len(set1) == 0 or len(set2) == 0:
-        return 0
-    intersection = len(set1.intersection(set2))
-    union = len(set1.union(set2))
-    return intersection / union if union > 0 else 0
+    intersection_size = len(s1.intersection(s2))
+    union_size = len(s1.union(s2))
+    if union_size > 0:
+        return intersection_size / union_size
+    return 0
 
-# Load test pairs
-print("Making read predictions...")
-predictions_read = open("predictions_Read.csv", 'w')
-predictions_read.write("userID,bookID,prediction\n")
+def jaccardThresh(u, b, ratingsPerItem, ratingsPerUser):
+    """
+    Predict if user u will read book b using Jaccard similarity.
+    Returns 1 if:
+    - Highest Jaccard similarity with any book user has read > 0.013, OR
+    - Book has more than 40 ratings (is popular)
+    """
+    highest_similarity = 0
+    if u in ratingsPerUser:
+        for other_book in ratingsPerUser[u]:
+            if other_book == b:
+                continue
+            if b in ratingsPerItem and other_book in ratingsPerItem:
+                similarity = Jaccard(ratingsPerItem[b], ratingsPerItem[other_book])
+                if similarity > highest_similarity:
+                    highest_similarity = similarity
 
-# Read prediction model
-threshold = 0.5
-read_count = 0
-total_count = 0
+    if highest_similarity > 0.013 or len(ratingsPerItem.get(b, [])) > 40:
+        return 1
+    return 0
 
+# Make predictions
+print("Making read predictions using Jaccard similarity...")
+output_file = open("predictions_Read.csv", 'w')
 for line in open("pairs_Read.csv"):
     if line.startswith("userID"):
+        output_file.write(line)
         continue
+    u, b = line.strip().split(',')
+    prediction = jaccardThresh(u, b, ratingsPerItem, ratingsPerUser)
+    output_file.write(u + ',' + b + ',' + str(prediction) + '\n')
 
-    user, book = line.strip().split(',')
-    total_count += 1
-
-    # Feature 1: Book popularity
-    pop_score = bookPopularity.get(book, 0)
-
-    # Feature 2: User activity level
-    user_activity = len(userBooks.get(user, set()))
-
-    # Feature 3: Jaccard similarity with user's read books
-    if user in userBooks:
-        # Calculate similarity between this book's readers and user's books
-        book_readers = bookUsers.get(book, set())
-        user_books = userBooks[user]
-
-        # Find similar users who read this book
-        similar_score = 0
-        for user_book in list(user_books)[:50]:  # Limit for efficiency
-            book_readers_other = bookUsers.get(user_book, set())
-            sim = jaccard_similarity(book_readers, book_readers_other)
-            similar_score += sim
-
-        if len(user_books) > 0:
-            similar_score /= min(len(user_books), 50)
-    else:
-        similar_score = 0
-
-    # Feature 4: Check if book is in popular set
-    is_popular = 1 if book in popularBooks else 0
-
-    # Combined score
-    score = (0.4 * is_popular +
-             0.3 * pop_score * 100 +
-             0.2 * similar_score +
-             0.1 * min(user_activity / 50, 1))
-
-    # Predict
-    if score > threshold:
-        prediction = 1
-        read_count += 1
-    else:
-        prediction = 0
-
-    predictions_read.write(f"{user},{book},{prediction}\n")
-
-predictions_read.close()
-
-# Adjust to ensure 50/50 split
-print(f"Initial predictions: {read_count}/{total_count} = {read_count/total_count:.2%} read")
-
-# Re-run with threshold adjustment to get closer to 50%
-print("Adjusting threshold for 50/50 split...")
-scores = []
-
-for line in open("pairs_Read.csv"):
-    if line.startswith("userID"):
-        continue
-
-    user, book = line.strip().split(',')
-
-    pop_score = bookPopularity.get(book, 0)
-    user_activity = len(userBooks.get(user, set()))
-
-    if user in userBooks:
-        book_readers = bookUsers.get(book, set())
-        user_books = userBooks[user]
-        similar_score = 0
-        for user_book in list(user_books)[:50]:
-            book_readers_other = bookUsers.get(user_book, set())
-            sim = jaccard_similarity(book_readers, book_readers_other)
-            similar_score += sim
-        if len(user_books) > 0:
-            similar_score /= min(len(user_books), 50)
-    else:
-        similar_score = 0
-
-    is_popular = 1 if book in popularBooks else 0
-    score = (0.4 * is_popular + 0.3 * pop_score * 100 +
-             0.2 * similar_score + 0.1 * min(user_activity / 50, 1))
-    scores.append((user, book, score))
-
-# Sort by score and take top 50%
-scores.sort(key=lambda x: x[2], reverse=True)
-threshold_idx = len(scores) // 2
-threshold_score = scores[threshold_idx][2]
-
-# Write final predictions
-predictions_read = open("predictions_Read.csv", 'w')
-predictions_read.write("userID,bookID,prediction\n")
-
-for user, book, score in scores:
-    prediction = 1 if score >= threshold_score else 0
-    predictions_read.write(f"{user},{book},{prediction}\n")
-
-predictions_read.close()
+output_file.close()
 print("Read predictions saved to predictions_Read.csv")
 
 ###############################################################################
